@@ -1,0 +1,60 @@
+#ignore all files that are bigger than 100M
+#find . -size +100M | cat >> .gitignore
+
+
+*
+!*/
+!*.*
+
+.DS_Store
+.idea
+.idea/*
+
+*.pyc
+./*/*.pyc
+./*/*/*.pyc
+./*/*/*/*.pyc
+./*/*/*/*/*.pyc
+./*/*/*/*/*/*.pyc
+
+*.log
+
+logs
+./*/logs
+./*/*/logs
+./*/*/*/logs
+./*/*/*/*/logs
+./*/*/*/*/*/logs
+
+venv
+
+*.txt
+*.h5
+
+# raw
+*.rar
+*.csv
+*.dat
+cifar-10-batches-py
+*.tar.gz
+*.png
+*.zip
+*.json
+*.pkl
+*.db
+*.cs
+
+
+#big pkl files
+!/apps/experiments/logs/log_viewer.py
+/apps/experiments/logs
+/apps/experiments/logs/*
+/apps/experiments/wandb
+
+#raw datasets
+/datasets/raw/*
+/datasets/raw/*/*
+/datasets/raw/*/*/*
+/tests/*
+/checkpoints/
+/datasets/preprocess/fall/

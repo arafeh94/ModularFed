@@ -1,0 +1,69 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.5.1/dist/chart.min.js"></script>
+<script>Array.range = (start, end) => Array.from({length: (end - start)}, (v, k) => k + start);</script>
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+      integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"
+        integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n"
+        crossorigin="anonymous"></script>
+<div>
+    <h5><u>Available Experiments</u></h5>
+    <form method="get">
+        <table id="experiments" class="table"></table>
+        <input type="submit" style="margin-left: 16px;">
+    </form>
+    <div class="chart-content" style="width: 70%;margin: auto">
+        <canvas id="accChart"></canvas>
+    </div>
+</div>
+
+<script>
+    serverVars = {
+        tables: {{ tables|safe }},
+        accuracies: {{ accuracies|safe }}
+    }
+
+    function load_exp() {
+        let expTable = document.getElementById('experiments')
+        for (let key in serverVars.tables) {
+            let row = expTable.insertRow(0);
+            let cell0 = row.insertCell(0);
+            let cell1 = row.insertCell(1);
+            let cell2 = row.insertCell(2);
+            cell0.innerHTML = key;
+            cell1.innerHTML = serverVars.tables[key];
+            cell2.innerHTML = '<input type="checkbox" name="' + key + '" id="' + key + '"/>'
+        }
+    }
+
+    function load_graph() {
+        if (serverVars.accuracies.length <= 0)
+            return
+        let ctx = document.getElementById('accChart').getContext('2d');
+        const labels = Array.range(0, serverVars.accuracies[Object.keys(serverVars.accuracies)[0]].length);
+        let datasets = []
+        let colors = ['#AA4499', '#DDCC77', 'blue', '#117733']
+        let index = 0
+        for (let session in serverVars.accuracies) {
+            let sessionAccuracies = serverVars.accuracies[session]
+            datasets.push({
+                label: session,
+                data: sessionAccuracies,
+                backgroundColor: ['#712121'],
+                borderColor: [colors[index % colors.length]],
+                borderWidth: 2
+            })
+            index += 1
+        }
+        let chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+        });
+        document.getElementById('accChart').scrollIntoView()
+    }
+
+    load_exp()
+    load_graph()
+</script>

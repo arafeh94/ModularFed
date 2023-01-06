@@ -1,0 +1,24 @@
+scikit-learn
+h5py
+setproctitle
+dill
+# networkx
+psutil
+mysql-connector-python
+matplotlib
+scipy
+Pillow
+validators
+wget
+zipfile-deflate64
+tqdm
+schedule
+mega.py
+apscheduler
+-f https://download.pytorch.org/whl/cu113/torch_stable.html
+torch
+torchvision
+torchaudio
+falcon
+urllib3
+requests_futures

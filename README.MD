@@ -17,6 +17,7 @@ federated.start()
 
 This code will start a federated learning application with the given parameters and subscribers.
 
+For a quick overview, a running example is available on codeocean following this link: https://codeocean.com/capsule/2481633/tree
 ## Federated Parameters
 
 FederatedLearning class requires different parameters to control its behaviour. Of these parameters, we can list

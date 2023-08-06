@@ -1,43 +1,282 @@
 # ModularFed - A Federated Learning Framework
 
-ModularFed is a federated learning framework that allows researchers to easily build
-their theories and run them in a federated learning context. <br>
+## Preample
 
-Different from others, ModularFed considers federated learning as a composition of different components that should be
-replaced on the spot without many changes.
+ModularFed is a federated learning framework that allows researchers and Federated Learning enthusiasts to build their theories easily and run them in a Federated Learning context withount the need to reinvent the wheel.
 
-An example of running a federated learning task
+Different from others, ModularFed considers Federated Learning as a composition of different components that can be easily modified or replaced with as minimum changes as possible. The goal is to provide ML enthusiasts and researchers with a robust tool to start with Federated Learning in no time. You can start a Federated Learning process as easy as calling couple of lines of code as ModularFed performs the heavy lifting for you behind the scenes.
 
 ```
 federated = FederatedLearning(params)
 federated.add_subscriber(logger)
-federated.add_subscriber(plotter)
 federated.start()
 ```
 
-This code will start a federated learning application with the given parameters and subscribers.
+In this Readme file, we try to summarize the way ModularFed works and provide some code line examples so that you can start working with your ideas right away.
 
-For a quick overview, a running example is available on codeocean following this link: https://codeocean.com/capsule/2481633/tree
-## Federated Parameters
+**NB2:** In its backend, ModularFed uses several industry standadrd machine and deep learning libraries such as Mathplotlib and Numpy and relies on PyTorch in its core to provide the deep learning components such as models, loss functions and optimizers.
 
-FederatedLearning class requires different parameters to control its behaviour. Of these parameters, we can list
+**NB2:** It is expected from you, at least knowing what Federated Learning is and have some experience with Python, so that you can pick up and connect the dots easily when you read about the different components of ModularFed.
 
-### trainer_manager:
+Let us start with a generic question: What components do we need to start with a Federated Learning task in general?
 
-An instance of the TrainerManager interface defines how trainers are running. TrainerManager is followed by
-TrainerParams, which define the clients' training parameters, such as epochs, loss, and so on. It exists, for now, three
-builtin trainer managers:
+Mainly, a lot of things, but the main ones can be summarized as the below:
+1. Data (for example, MNIST, CIFAR10, CIFAR100, Customized data, etc.)
+2. A model to train the data on (for example, Logistic Regression, CNN, etc.)
+3. An optimizer (for example, SGD, Adam, etc.)
+4. A loss function (for example, Cross Entropy Loss)
+5. Number of Epochs (for the local training rounds)
+6. Number of Rounds (for the global model training rounds)
+7. A Federated Averaging method (for example, FedAvg)
 
-- SeqTrainerManager that runs trainers sequentially on a single thread
-- MPITrainerManager runs trainers on a different instance, so it would be possible to run multiple trainers
-  simultaneously. Using this manager would also allow us to control the trainers' behaviour regarding allocated
-  resources for their runs since they run on different processes (or different devices). Such control is given because
-  we are using MPI to complete this task. Refer to MPI Section to see examples.
+Each one of these components is a domain by itself and active areas of research, but ModularFed abstracts those and provides you direct access to these components with a simple call. Furthermore, inside the project, each part of these components is stored or functions as part of a bigger group. As we proceed, we will highlight each of these groups and later show how things all come together.
 
-```python
-trainer_manager = SeqTrainerManager()
-trainer_params = TrainerParams(trainer_class=trainers.TorchTrainer, batch_size=50, epochs=25, optimizer='sgd',
-                               criterion='cel', lr=0.1)
+## How It Works
+
+Mainly, you need 3 major components following the steps below to run a Federated Learning tasks with ModularFed:
+1.	**preload** to prepare the data
+```
+client_data = preload('mnist', ShardDistributor(300, 2)).select(range(100))
+```
+2.	**TrainerParams** to set the training parameters
+```
+trainer_params = TrainerParams(
+                trainer_class=trainers.TorchTrainer,
+                batch_size=50,
+                epochs=3,
+                optimizer='sgd',
+                criterion='cel',
+                lr=0.1)
+```
+3.	**Federated** to start your federated learning process
+```
+federated = FederatedLearning(
+            num_rounds=25,
+            initial_model=lambda: CNN_OriginalFedAvg(only_digits=True),
+            trainer_manager=SeqTrainerManager(),
+            aggregator=aggregators.AVGAggregator(),
+            metrics=metrics.AccLoss(batch_size=50, criterion='cel'),
+            client_selector=client_selectors.Random(2),
+            client_scanner=client_scanners.DefaultScanner(client_data),
+            trainer_config=trainer_params,
+            trainers_data_dict=client_data,
+            desired_accuracy=0.99)
+            
+federated.start()
+```
+
+### Step 1: Prearing the data
+
+A big chunk of time in ML goes to preprocessing data and making it suit our framework and needs.
+
+How to preprocess our data so that it works with the ModularFed framework?
+
+First, we need to bring the data to the framework.
+This can be done using the preload function as follows:
+```
+client_data = preload('mnist', ShardDistributor(300, 2)).select(range(100))
+```
+
+The above code lone returns clients' data of type `Dict[int, DataContainer]` where the output is a dictionary having the client number as an `integer` and the data per each client in the form of a `DataContainer`.
+`Datacontainer` is a custom class in ModularFed containing the features and the labels of the data that can be accessed via:
+
+```
+features = datacontainer.x
+labels = datacontainer.y
+```
+
+The preload function takes the `name` of the dataset as a string for the first parameter and a `Distributer` as the other parameter.
+
+ModularFed comes equipped with some of the most used datasets in the research community such as: 
+```javascript
+- "mnist10k
+- "mnist"
+- "femnist"
+- "kdd"
+- "kdd_train"
+- "kdd_test"
+- "fekdd_test"
+- "fekdd_train"
+- "signs"
+- "cifar10"
+- "fall_by_client"
+- "fall_ar_by_client"
+- "mnist10k_mr1"
+- "cifar100_train"
+- "cifar100_test"
+- "cifar100"
+```
+
+The second parameter is a `Distributer`.
+In ModularFed we have several of distributers, all of which control how the data will be distributed across the framework. 
+Usually, the name of the Distributer is self explanatory. For example if you are calling the 'ShardDistributor' class, it would mean that you would like to partition your data into shards. Each distributer, depending on how it distributes the data has parameters. For example, `DirichletDistributor` can have a parameter such as `skewness` that will control how the data distribution is skewed, while the `SizeDistributer` might have a `min` and `max` parameter to control the distribution. 
+
+ModularFed comes equipped with the following distributors. (we also showcase a pprint output of the output data after calling each distributor):
+
+<ul>
+  <li>DirichletDistributor(num_clients, num_labels, skewness=0.5)</li>
+  <li>PercentageDistributor(num_clients, min_size, max_size, percentage)</li>
+  <li>LabelDistributor(num_clients, min_size, max_size, percentage)</li>
+  <li>SizeDistributor(num_clients, min_size, max_size)</li>
+  <li>UniqueDistributor(num_clients, min_size, max_size)</li>
+  <li>ShardDistributor(shard_size, shards_per_client)</li>
+  <li>ManualDistributor(size_dict: Dict[int, int])</li>
+  <li>PipeDistributor</li>
+</ul>
+
+Examples:
+```
+#DirichletDistributor
+client_data = preload('mnist', DirichletDistributor(num_clients=5, num_labels=10, skewness=0.5))
+
+{0: Size:12217, Unique:[1 2 3 4 5 6 7 8 9], Features:torch.Size([784]),
+ 1: Size:15265, Unique:[0 1 2 3 4], Features:torch.Size([784]),
+ 2: Size:14305, Unique:[0 1 2 3 5 6], Features:torch.Size([784]),
+ 3: Size:12214, Unique:[0 1 2 3 4 5 6 7 8 9], Features:torch.Size([784]),
+ 4: Size:15134, Unique:[0 1 2 3 4 5 6 7], Features:torch.Size([784])}
+
+#PercentageDistributor
+client_data = preload('mnist', PercentageDistributor(num_clients=5, min_size=90, max_size=100, percentage=100))
+
+{0: Size:18, Unique:[6], Features:torch.Size([784]),
+ 1: Size:12, Unique:[1], Features:torch.Size([784]),
+ 2: Size:20, Unique:[6], Features:torch.Size([784]),
+ 3: Size:14, Unique:[6], Features:torch.Size([784]),
+ 4: Size:16, Unique:[0], Features:torch.Size([784])}
+
+
+#LabelDistributor
+client_data = preload('mnist', LabelDistributor(num_clients=5, min_size=1, max_size=10, label_per_client=3))
+
+{0: Size:6, Unique:[1 2 3], Features:torch.Size([784]),
+ 1: Size:3, Unique:[4 5 6], Features:torch.Size([784]),
+ 2: Size:3, Unique:[7 8 9], Features:torch.Size([784]),
+ 3: Size:3, Unique:[0 1 2], Features:torch.Size([784]),
+ 4: Size:3, Unique:[3 4 6], Features:torch.Size([784])}
+
+
+#SizeDistributor
+client_data = preload('mnist', SizeDistributor(num_clients=5, min_size=1, max_size=10))
+
+{0: Size:8, Unique:[1 2], Features:torch.Size([784]),
+ 1: Size:6, Unique:[2 3], Features:torch.Size([784]),
+ 2: Size:7, Unique:[4 5 6 7], Features:torch.Size([784]),
+ 3: Size:7, Unique:[0 8 9], Features:torch.Size([784]),
+ 4: Size:8, Unique:[0 9], Features:torch.Size([784])}
+
+
+#UniqueDistributor
+client_data = preload('mnist', UniqueDistributor(num_clients=5, min_size=1, max_size=10))
+
+{0: Size:8, Unique:[0], Features:torch.Size([784]),
+ 1: Size:4, Unique:[1], Features:torch.Size([784]),
+ 2: Size:4, Unique:[2], Features:torch.Size([784]),
+ 3: Size:2, Unique:[3], Features:torch.Size([784]),
+ 4: Size:4, Unique:[4], Features:torch.Size([784])}
+
+
+#ShardDistributor
+client_data = preload('mnist', ShardDistributor(300, 2)).select(range(5))
+
+{0: Size:600, Unique:[3. 4.], Features:(784,),
+ 1: Size:600, Unique:[4. 5.], Features:(784,),
+ 2: Size:600, Unique:[2. 4.], Features:(784,),
+ 3: Size:600, Unique:[3. 5.], Features:(784,),
+ 4: Size:600, Unique:[0. 9.], Features:(784,)}
+
+```
+
+For example, let us try to create a set of clients to partake in the Federated Learning rounds and populate them with data from the MNIST dataset.
+We want to distribute the data as shards such that, in our example each client will have `2 shards` each one having `300 images`.
+This means clients will have `600 images` distributed equally between `2 classes`. That is,` 300 images` from each class. 
+```
+client_data = preload('mnist', ShardDistributor(300, 2)).select(range(100))
+```
+When you select a dataset, such as `'mnist'` and it has not been downloaded before, ModularFed fetches it from the internet and creates a `.pkl` file with the distribution you provided as the second parameter. You can also provide name for the `pkl` file if you want by passing a string with the tag parameter such as `tag='mypklfile`. The `tag` parameter is optionl. If you do not pass it, ModularFed will save the file with an automated generated name with the information of its creation and save it in the `datasets/pickles` folder in the project. By doing this, (1) in the future, if you try to use the same dataset with the same distribution, there would be no need to download it and it will be used directly from the already saved `pkl` file and (2) you can move the `pkl` file easily between projects or even share it with other researchers if they want to work on similar dataset.
+
+Now that we have the data, let's keep it aside and build the trainer parameters needed which will be important part of our learning. 
+ 
+### Step 2: Preparing the Training Parameters
+
+Once we have the data ready, we start preparing the training parameters using the class `TrainerParams`. <br>
+The class `TrainerParams` accepts several parameters as the main ingredient of a Federated Learning task. For example, the optimizer and the criterion (i.e., the loss function) and others are provided here.
+
+- **Trainer Class:** The trainer class passes the training method from the class <italic>TorchTrainer</italic> which contains the <italic>train</italic> function internally that carries on the actual training on the local devices.
+  
+- **Batch Size:** Characterized by batch_size in the learning parameter, this hyperparameter sets the number of batches the data will be fed to the neural network. Depending on your hardware, you can select the appropriate size of the batch. Larger batch sizes usually need better hardware resources. Again, you need to experiment with this value to reach a value that suits your needs
+  
+- **Epochs:** In the context of deep learning in general might have a bit different meaning that it has in federated learning. In the context of Federated Learning, epoch symbolizes the amount of rounds a model will train locally on each client. While rounds in Federated Learning usually symbolizes the amount of times the entire clients will finalize their epochs and send their local model to the global model for aggregation.
+  
+- **Optimizer:** At the moment, ModularFed provides the SGD and Adam optimizers. You can call ‘sgd’ or ‘adam’ in the parameter. In case you want to use a different optimizer, you can add it yourself in the src/federated/components/params.py file. This is where the modular advantages of ModularFed comes in where adding or changing something is very fast.
+  
+- **Criterion:** Or interchangeable used with the Loss Function. At the moment, ModularFed provides the Cross Entropy Loss function by calling ‘cel’ (the first letter of each of the words). In case you want to use a different criterion, you can add it yourself in the src/federated/components/params.py file. This is where the modular advantages of ModularFed comes in where adding or changing something is very fast.
+  
+- **Learning Rate:** The learning rate is a hyperparameter used with the optimizer. In ModularFed it is characterized by lr in the parameters where it takes a float as the learning rate. Common learning rates are 0.1, 0.01, 0.001, etc depending on the learning task at hand. Coming up with the correct lr needs a bit testing and experimenting until you get a good lr for your task at hand.
+
+```
+trainer_params = TrainerParams(
+                 trainer_class=trainers.TorchTrainer,
+                 batch_size=32,
+                 epochs=3,
+                 optimizer='sgd',
+                 criterion='cel',
+                 lr=0.1)
+```
+
+### Step 3: Preparing and Launching the Federated Learning Process
+
+The main component for the Federated Learning process is the class `FederatedLearning`. <br>
+`FederatedLearning` takes up to 11 parameters of which some are mandatory and some optional:
+
+- **initial_model:** This is the model on which the local training per client will take place. ModularFed comes with several well known models. (More information on models in the models section below) 
+
+- **trainers_data_dict:** Which is of type `Dict[int, DataContainer]` that the `preload` method returns in step 1.
+
+- **trainer_manager:** Which is of type `TrainerManager` and is responsible for managing the training data in the learning process. ModularFed provides 2 types of TrainManagers:
+  - `SeqTrainerManager` (If you are not planning on using parallel or cluster computing, using `SeqTrainerManager` is an easier option.)
+  - `MPITrainerManager`
+  
+- **trainer_config:** Which is of type `TrainerParams` which were created in step 2.
+
+- **aggregator:** Which is of type `Aggregator` and controls how the central server will aggregate the local models into the global one. ModularFed provides the `AVGAggregator` aggregator approach.
+  
+- **client_selector:** Which is of type `ClientSelector`. This is where you control how many clients will be selected by the framework for each round. ModularFed has 4 built in options for client selection
+  - `All`: which returns all the clients created in preload in step 1.
+  - `random`: which selects random clients based on the number you specify as its parameter
+  -  `ClusterSelector`:
+  -  `Specific`: 
+
+- **metrics:** Which takes `ModelInfer` that is handles the inference of the model using the function `AccLoss` that calculates the accuracy and the loss of the batched data.
+  
+- **num_rounds**: Which is an integer representing the number of rounds the central server will gather the local models and aggregate them into a global one. 
+(If this parameter is not provided, a default value of 10 rounds is used)
+
+- **desired_accuracy**: Which is a float number that highlights the accuracy at which the convergence would be considered acceptable and the Federated Learning would stop. 0.90 implies 90%. (If this parameter is not provided, a default value of 0.99 (99%) is used)
+
+- **train_ratio**: This parameter is important if no testing data is provided to the framework against which ModularFed can perform the testing. Accordingly, this value is the ratio with which the training data `trainers_data_dict` will be further into training and test sets.  For example, a value of 0.7 would mean the data will be divided into 70% training set and 30% testing set. (If this parameter is not provided, a default value of 0.8 (80%) is used)
+
+- **test_data**:(optional) Accepts a Datacontainer similar to `trainers_data_dict` but containing the test data against which we want our model to get tested. Usually this is data that is not used at all during the training and the model would be seeing the data for the first time.
+
+Once the above parameters are ready, we can create an instance of FederatedLearning class and give to it all the information:
+
+```
+federated = FederatedLearning(
+    initial_model=lambda: CNN_OriginalFedAvg(only_digits=True),
+    trainers_data_dict=client_data,
+    trainer_manager=SeqTrainerManager(),
+    aggregator=aggregators.AVGAggregator(),
+    num_rounds=25,
+    metrics=metrics.AccLoss(batch_size=50, criterion='cel'),
+    client_selector=client_selectors.Random(2),
+    client_scanner=client_scanners.DefaultScanner(client_data),
+    trainer_config=trainer_params,
+    desired_accuracy=0.99)
+```
+
+Once done, we can call the `start` method on the instantiated FederatedLearning class, which will start the Federated Learning process:
+
+```
+federated.start()
 ```
 
 ### aggregator:
@@ -130,7 +369,7 @@ For how many rounds the federated learning task should run? 0 used for unlimited
 
 ### desired_accuracy
 
-Desired accuracy where federated learning should stop when it is reached
+Desired accuracy defines the accuracy of which federated learning should stop when it is reached
 
 ### train_ratio
 
@@ -140,7 +379,8 @@ for each client data.
 
 ### test_data
 
-An optional parameter used for cases when the dataset have already specific test data to test the model accuracy.
+An optional parameter used for cases when the dataset have already specific test data to test the model accuracy.<br>
+Otherwise, federated learning class will internally split the given data to train, test sets
 
 ```python
 test_data = DataContainer(...)
@@ -260,21 +500,22 @@ mpiexec -n 11 python distributed_averaging.py
 Enable parallel distributed training through docker containers.
 
 ### Build
-
+Using a clone docker file (have always the latest updates)
 ```bash
-docker build -t arafeh94/ModularFed .
+docker build -t arafeh94/localfed .
 ```
 
+Using a preloaded docker hub image (updated occasionally or after major changes)
 ```bash
-docker pull arafeh94/ModularFed
+docker pull arafeh94/localfed
 ```
 
 ### Create one container for the server and two for the clients
 
 ```bash
-docker run -d --name head -p 20:20 arafeh94/ModularFed
-docker run -d --name node1 arafeh94/ModularFed
-docker run -d --name node2 arafeh94/ModularFed
+docker run -d --name head -p 20:20 arafeh94/localfed
+docker run -d --name node1 arafeh94/localfed
+docker run -d --name node2 arafeh94/localfed
 ```
 
 ### Check containers' IP
@@ -309,6 +550,6 @@ mpirun -np 3 --host localhost,172.17.0.3 python3 ${HOME}/mpi4py_benchmarks/com.p
 
 ```bash
 docker exec -it -u mpirun head /bin/bash
-cd ${HOME}/ModularFed/apps/experiments/
+cd ${HOME}/localfed/apps/experiments/
 mpirun -np 3 --host localhost,172.17.0.3,172.17.0.4 python3 distributed_averaging.py
 ```
